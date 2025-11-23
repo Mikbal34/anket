@@ -54,6 +54,8 @@ export default function ResultsPage() {
   const [missingGeneral, setMissingGeneral] = useState<string[]>([]);
   const [missingOC, setMissingOC] = useState<string[]>([]);
 
+  // Aktif Sekme (GENERAL veya OC)
+  const [activeTab, setActiveTab] = useState<'GENERAL' | 'OC'>('GENERAL');
   const [selectedDetailCategory, setSelectedDetailCategory] = useState<string>('wealth');
 
   useEffect(() => {
@@ -71,14 +73,11 @@ export default function ResultsPage() {
         const responses = data as ResponseRow[];
         setRawData(responses);
 
-        // KİMLER HANGİ ANKETİ DOLDURMAMIŞ?
         const votersGeneral = new Set<string>();
         const votersOC = new Set<string>();
 
         responses.forEach(r => {
-          // Genel Anket Kontrolü (wealth varsa doldurmuştur kabul ediyoruz)
           if (r.voter_name && r.wealth_rank && r.wealth_rank.length > 0) votersGeneral.add(r.voter_name);
-          // O.Ç. Anketi Kontrolü (gaddar varsa doldurmuştur)
           if (r.voter_name && r.gaddar_rank && r.gaddar_rank.length > 0) votersOC.add(r.voter_name);
         });
 
@@ -88,11 +87,9 @@ export default function ResultsPage() {
         setMissingGeneral(missingG);
         setMissingOC(missingO);
 
-        // KİLİT MANTIĞI: Her biri kendi içinde bağımsız
         setIsGeneralLocked(missingG.length > 0);
         setIsOCLocked(missingO.length > 0);
 
-        // Hesaplamaları her zaman yapalım, gösterip göstermemek UI'da belli olur
         const calculated = calculateResults(responses);
         setResults(calculated);
       }
@@ -106,7 +103,6 @@ export default function ResultsPage() {
   const calculateResults = (data: ResponseRow[]) => {
     const finalResults: { [key: string]: RankResult[] } = {};
     
-    // Puan Tutucular
     const generalScores: { [name: string]: number } = {};
     const ocScores: { [name: string]: number } = {};
     
@@ -115,7 +111,6 @@ export default function ResultsPage() {
       ocScores[name] = 0;
     });
 
-    // 1. GENEL KATEGORİLERİ HESAPLA
     GENERAL_CATEGORIES.forEach((cat) => {
       const scores: { [name: string]: number } = {};
       let voteCount = 0;
@@ -147,7 +142,6 @@ export default function ResultsPage() {
         .sort((a, b) => a.score - b.score);
     });
 
-    // 2. O.Ç. KATEGORİLERİNİ HESAPLA
     OC_CATEGORIES.forEach((cat) => {
       const scores: { [name: string]: number } = {};
       let voteCount = 0;
@@ -175,7 +169,6 @@ export default function ResultsPage() {
         .sort((a, b) => a.score - b.score);
     });
 
-    // 3. GENEL SIRALAMA
     finalResults['GENERAL'] = Object.entries(generalScores)
       .map(([name, totalScore]) => ({
         name,
@@ -183,7 +176,6 @@ export default function ResultsPage() {
       }))
       .sort((a, b) => a.score - b.score);
 
-    // 4. O.Ç. ŞAMPİYONU
     finalResults['OC_CHAMPION'] = Object.entries(ocScores)
       .map(([name, totalScore]) => ({
         name,
@@ -198,9 +190,9 @@ export default function ResultsPage() {
   const Podium = ({ title, data, colorClass, icon, isLocked, missingList }: any) => {
     if (isLocked) {
         return (
-            <div className={`bg-gray-800 rounded-2xl p-8 shadow-xl max-w-4xl mx-auto mb-12 text-center border-2 border-dashed border-gray-700 relative overflow-hidden`}>
+            <div className={`bg-gray-800 rounded-2xl p-8 shadow-xl max-w-4xl mx-auto mb-12 text-center border-2 border-dashed border-gray-700 relative overflow-hidden min-h-[400px] flex flex-col items-center justify-center`}>
                  <div className="absolute inset-0 bg-black/50 z-0" />
-                 <div className="relative z-10">
+                 <div className="relative z-10 w-full">
                     <Lock className="w-16 h-16 text-gray-500 mx-auto mb-4" />
                     <h3 className="text-2xl font-black text-gray-400 mb-2">{title} KİLİTLİ</h3>
                     <p className="text-gray-500 mb-6">Sonuçları görmek için şu arkadaşların anketi tamamlaması lazım:</p>
@@ -218,12 +210,13 @@ export default function ResultsPage() {
 
     return (
         <div className={`bg-gradient-to-b ${colorClass} rounded-2xl p-1 shadow-2xl max-w-4xl mx-auto overflow-hidden mb-12`}>
-        <div className="bg-gray-900/90 backdrop-blur p-6 sm:p-8 rounded-xl">
+          <div className="bg-gray-900/90 backdrop-blur p-6 sm:p-8 rounded-xl">
             <h3 className="text-2xl font-black text-center text-white mb-8 flex items-center justify-center gap-3">
                 {icon} {title} {icon}
             </h3>
             
-            <div className="flex flex-col sm:flex-row items-end justify-center gap-4 mb-8 h-auto sm:h-64 pb-4">
+            {/* Podyum */}
+            <div className="flex flex-col sm:flex-row items-end justify-center gap-4 mb-12 h-auto sm:h-64 pb-4">
                 {/* 2. Sıra */}
                 {data[1] && (
                 <div className="order-2 sm:order-1 flex flex-col items-center w-full sm:w-1/3">
@@ -266,7 +259,21 @@ export default function ResultsPage() {
                 </div>
                 )}
             </div>
-        </div>
+
+            {/* Tam Liste Sıralaması (Podyum Altı) */}
+            <div className="border-t border-gray-700 pt-6 mt-4">
+                <h4 className="text-white text-center font-bold mb-4 text-sm uppercase tracking-wider opacity-70">Tüm Sıralama</h4>
+                <div className="space-y-2">
+                    {data.slice(3).map((rank: RankResult, idx: number) => (
+                        <div key={rank.name} className="flex items-center bg-gray-800/50 rounded-lg p-3 hover:bg-gray-700 transition-colors">
+                            <span className="text-gray-500 font-bold w-8">#{idx + 4}</span>
+                            <span className="text-gray-200 font-medium flex-1">{rank.name}</span>
+                            <span className="text-gray-500 font-mono text-sm">{rank.score.toFixed(2)}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+          </div>
         </div>
     );
   };
@@ -275,9 +282,9 @@ export default function ResultsPage() {
 
   const generalRank = results['GENERAL'] || [];
   const ocRank = results['OC_CHAMPION'] || [];
-  const ALL_CATEGORIES = [...GENERAL_CATEGORIES, ...OC_CATEGORIES];
-
-  // Hangi kategorinin sonuçlarını gösterebiliriz?
+  
+  const activeCategories = activeTab === 'GENERAL' ? GENERAL_CATEGORIES : OC_CATEGORIES;
+  
   const canShowDetail = (catKey: string) => {
     const isGeneral = GENERAL_CATEGORIES.some(c => c.key === catKey);
     if (isGeneral) return !isGeneralLocked;
@@ -285,38 +292,69 @@ export default function ResultsPage() {
   };
 
   return (
-    <main className="min-h-screen bg-gray-50 py-12 px-4">
+    <main className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-6xl mx-auto">
-        <div className="text-center mb-16">
-          <h1 className="text-5xl font-black text-gray-900 mb-4">SONUÇLAR</h1>
-          <p className="text-xl text-gray-600">Tamamlanan anketlerin sonuçları aşağıdadır.</p>
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-black text-gray-900 mb-4">SONUÇLAR</h1>
         </div>
 
-        {/* GENEL KLASMAN LİDERİ */}
-        <Podium 
-          title="GENEL KLASMAN LİDERLERİ" 
-          data={generalRank} 
-          colorClass="from-blue-900 to-gray-900" 
-          icon={<Trophy className="w-8 h-8 text-yellow-400" />} 
-          isLocked={isGeneralLocked}
-          missingList={missingGeneral}
-        />
+        {/* SEKME GEÇİŞ BUTONLARI */}
+        <div className="flex justify-center gap-4 mb-8">
+            <button
+                onClick={() => { setActiveTab('GENERAL'); setSelectedDetailCategory('wealth'); }}
+                className={`px-6 py-3 rounded-full font-black text-lg transition-all flex items-center gap-2 shadow-lg ${
+                    activeTab === 'GENERAL' 
+                    ? 'bg-blue-600 text-white scale-105 ring-4 ring-blue-200' 
+                    : 'bg-white text-gray-400 hover:bg-gray-100'
+                }`}
+            >
+                <Trophy className="w-5 h-5" />
+                GENEL KLASMAN
+            </button>
+            <button
+                onClick={() => { setActiveTab('OC'); setSelectedDetailCategory('gaddar'); }}
+                className={`px-6 py-3 rounded-full font-black text-lg transition-all flex items-center gap-2 shadow-lg ${
+                    activeTab === 'OC' 
+                    ? 'bg-red-600 text-white scale-105 ring-4 ring-red-200' 
+                    : 'bg-white text-gray-400 hover:bg-gray-100'
+                }`}
+            >
+                <Skull className="w-5 h-5" />
+                O.Ç. ŞAMPİYONASI
+            </button>
+        </div>
 
-        {/* O.Ç. ŞAMPİYONU */}
-        <Podium 
-          title="O.Ç. ŞAMPİYONLAR LİGİ" 
-          data={ocRank} 
-          colorClass="from-red-900 to-gray-900" 
-          icon={<Skull className="w-8 h-8 text-red-500" />} 
-          isLocked={isOCLocked}
-          missingList={missingOC}
-        />
+        {/* AKTİF SEKME İÇERİĞİ */}
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
+            {activeTab === 'GENERAL' ? (
+                <Podium 
+                    title="GENEL KLASMAN LİDERİ" 
+                    data={generalRank} 
+                    colorClass="from-blue-900 to-gray-900" 
+                    icon={<Trophy className="w-8 h-8 text-yellow-400" />} 
+                    isLocked={isGeneralLocked}
+                    missingList={missingGeneral}
+                />
+            ) : (
+                <Podium 
+                    title="O.Ç. ŞAMPİYONU" 
+                    data={ocRank} 
+                    colorClass="from-red-900 to-gray-900" 
+                    icon={<Skull className="w-8 h-8 text-red-500" />} 
+                    isLocked={isOCLocked}
+                    missingList={missingOC}
+                />
+            )}
+        </div>
 
-        {/* TÜM DETAYLAR */}
-        <h2 className="text-3xl font-black text-center mb-8">DETAYLI ANALİZ</h2>
+        {/* DETAYLI ANALİZ TABLOSU */}
+        <h2 className="text-2xl font-black text-center mb-6 text-gray-700">
+            {activeTab === 'GENERAL' ? 'GENEL KATEGORİ DETAYLARI' : 'O.Ç. KATEGORİ DETAYLARI'}
+        </h2>
+        
         <div className="bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden mb-12">
-          <div className="flex overflow-x-auto bg-gray-50 border-b p-2 gap-2">
-            {ALL_CATEGORIES.map((cat) => (
+          <div className="flex overflow-x-auto bg-gray-50 border-b p-2 gap-2 justify-center">
+            {activeCategories.map((cat) => (
               <button
                 key={cat.key}
                 onClick={() => setSelectedDetailCategory(cat.key)}
@@ -325,7 +363,6 @@ export default function ResultsPage() {
                 }`}
               >
                 {cat.label}
-                {/* Kilit ikonu ekle eğer kilitliyse */}
                 {!canShowDetail(cat.key) && <Lock className="w-3 h-3 inline-block ml-2 text-gray-400" />}
               </button>
             ))}
@@ -366,8 +403,7 @@ export default function ResultsPage() {
             ) : (
                 <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                     <Lock className="w-12 h-12 mb-4 text-gray-300" />
-                    <p className="font-medium">Bu kategorinin sonuçları henüz kilitli.</p>
-                    <p className="text-sm">İlgili anketi herkes tamamlayınca açılacak.</p>
+                    <p className="font-medium">Bu bölüm kilitli.</p>
                 </div>
             )}
           </div>
