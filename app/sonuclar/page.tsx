@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Trophy, BarChart3, Loader2, Eye, Lock, Clock, AlertCircle } from 'lucide-react';
+import { Trophy, BarChart3, Loader2, Eye, Lock, Clock, AlertCircle, Crown, Star } from 'lucide-react';
 
 // Tipler
 interface ResponseRow {
@@ -42,24 +42,17 @@ export default function ResultsPage() {
 
   useEffect(() => {
     fetchResults();
-    
-    // Sonuçları düzenli kontrol et (Real-time gibi hissettirsin)
     const interval = setInterval(fetchResults, 5000);
     return () => clearInterval(interval);
   }, []);
 
   const fetchResults = async () => {
     try {
-      const { data, error } = await supabase
-        .from('survey_responses')
-        .select('*');
-
+      const { data, error } = await supabase.from('survey_responses').select('*');
       if (error) throw error;
 
       if (data) {
         const responses = data as ResponseRow[];
-        
-        // Kimler oy vermiş kontrol et
         const voters = Array.from(new Set(responses.map(r => r.voter_name).filter(Boolean))) as string[];
         const missing = NAMES.filter(name => !voters.includes(name));
         
@@ -67,11 +60,9 @@ export default function ResultsPage() {
         setMissingVoters(missing);
         setRawData(responses);
 
-        // EĞER EKSİK VARSA KİLİTLE
         if (missing.length > 0) {
           setIsLocked(true);
         } else {
-          // Herkes tamam, sonuçları hesapla
           setIsLocked(false);
           const calculated = calculateResults(responses);
           setResults(calculated);
@@ -86,6 +77,8 @@ export default function ResultsPage() {
 
   const calculateResults = (data: ResponseRow[]) => {
     const finalResults: { [key: string]: RankResult[] } = {};
+    const generalScores: { [name: string]: number } = {};
+    NAMES.forEach((name) => (generalScores[name] = 0));
 
     CATEGORIES.forEach((cat) => {
       const scores: { [name: string]: number } = {};
@@ -98,6 +91,7 @@ export default function ResultsPage() {
           rankList.forEach((name, index) => {
             if (scores[name] !== undefined) {
               scores[name] += index + 1;
+              generalScores[name] += index + 1;
             }
           });
         }
@@ -111,6 +105,14 @@ export default function ResultsPage() {
         .sort((a, b) => a.score - b.score);
     });
 
+    // GENEL PUAN HESAPLAMA
+    finalResults['GENERAL'] = Object.entries(generalScores)
+      .map(([name, totalScore]) => ({
+        name,
+        score: data.length > 0 ? (totalScore / (data.length * CATEGORIES.length)) : 0,
+      }))
+      .sort((a, b) => a.score - b.score);
+
     return finalResults;
   };
 
@@ -122,7 +124,7 @@ export default function ResultsPage() {
     );
   }
 
-  // --- EKRAN 1: KİLİTLİ EKRAN (Bekleyenler Var) ---
+  // KİLİTLİ EKRAN
   if (isLocked) {
     return (
       <main className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
@@ -130,10 +132,9 @@ export default function ResultsPage() {
           <div className="w-20 h-20 bg-gray-700/50 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse">
             <Lock className="w-10 h-10 text-yellow-500" />
           </div>
-          
           <h1 className="text-3xl font-black text-white mb-2">Sonuçlar Kilitli</h1>
           <p className="text-gray-400 mb-8">
-            Sonuçların açılması için herkesin oy kullanması gerekiyor. Heyecanı bozmayın!
+            Sonuçların açılması için herkesin oy kullanması gerekiyor.
           </p>
 
           <div className="bg-gray-900/50 rounded-xl p-4 border border-gray-700 mb-6 text-left">
@@ -146,7 +147,7 @@ export default function ResultsPage() {
               <div>
                 <p className="text-xs text-red-400 font-bold mb-2 flex items-center gap-2">
                   <AlertCircle className="w-3 h-3" />
-                  BEKLENENLER (OY VERMEMİŞ):
+                  BEKLENENLER:
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {missingVoters.map(name => (
@@ -159,7 +160,7 @@ export default function ResultsPage() {
             )}
             
             {votersList.length > 0 && (
-              <div className="mt-4">
+               <div className="mt-4">
                 <p className="text-xs text-green-400 font-bold mb-2 flex items-center gap-2">
                   <Clock className="w-3 h-3" />
                   TAMAMLAYANLAR:
@@ -182,26 +183,21 @@ export default function ResultsPage() {
             <Clock className="w-4 h-4" />
             Sayfayı Yenile
           </button>
-          
-          <div className="mt-6 pt-6 border-t border-gray-700/50">
-             <a href="/" className="block w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all">
-               Ankete Dön / Oy Kullan
-             </a>
-          </div>
         </div>
       </main>
     );
   }
 
-  // --- EKRAN 2: SONUÇLAR AÇIK (Herkes Tamam) ---
+  // SONUÇLAR AÇIK
+  const generalRank = results['GENERAL'] || [];
+
   return (
     <main className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
         <div className="text-center mb-12">
           <div className="inline-flex items-center gap-2 bg-green-100 text-green-800 px-4 py-2 rounded-full text-sm font-bold mb-4">
             <Eye className="w-4 h-4" />
-            Sonuçlar Açık - Herkes Oy Kullandı!
+            Sonuçlar Açık
           </div>
           <h1 className="text-4xl font-black text-gray-900 mb-2">Canlı Sonuçlar</h1>
           <p className="text-gray-600">
@@ -209,10 +205,82 @@ export default function ResultsPage() {
           </p>
         </div>
 
-        {/* 1. Bölüm: Genel Sıralama */}
+        {/* --- YENİ: GENEL LİDERLİK TABLOSU (ZİRVE) --- */}
+        <div className="mb-16">
+          <h2 className="text-3xl font-black text-center text-gray-900 mb-8 flex items-center justify-center gap-3">
+            <Crown className="w-8 h-8 text-yellow-500 fill-yellow-500" />
+            GENEL KLASMAN LİDERLERİ
+            <Crown className="w-8 h-8 text-yellow-500 fill-yellow-500" />
+          </h2>
+
+          <div className="bg-gradient-to-b from-gray-900 to-gray-800 rounded-2xl p-1 shadow-2xl max-w-4xl mx-auto overflow-hidden">
+            <div className="bg-gray-800/50 backdrop-blur p-6 sm:p-8 rounded-xl">
+               {/* İlk 3 Podyum */}
+               <div className="flex flex-col sm:flex-row items-end justify-center gap-4 mb-8 h-auto sm:h-64 pb-4">
+                  {/* 2. Sıra */}
+                  {generalRank[1] && (
+                    <div className="order-2 sm:order-1 flex flex-col items-center w-full sm:w-1/3">
+                      <div className="mb-2 text-gray-400 font-bold text-lg">#2</div>
+                      <div className="w-20 h-20 rounded-full bg-gray-300 border-4 border-gray-500 flex items-center justify-center text-2xl font-black text-gray-700 mb-3 shadow-lg">
+                        {generalRank[1].name.substring(0, 2)}
+                      </div>
+                      <div className="bg-gray-700 w-full h-32 rounded-t-xl flex flex-col items-center justify-start pt-4 border-t-4 border-gray-400">
+                        <div className="font-bold text-white text-xl">{generalRank[1].name}</div>
+                        <div className="text-gray-400 text-sm font-mono">Puan: {generalRank[1].score.toFixed(2)}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 1. Sıra (Şampiyon) */}
+                  {generalRank[0] && (
+                    <div className="order-1 sm:order-2 flex flex-col items-center w-full sm:w-1/3 -mt-8 z-10">
+                      <Crown className="w-12 h-12 text-yellow-400 fill-yellow-400 mb-2 animate-bounce" />
+                      <div className="w-24 h-24 rounded-full bg-yellow-400 border-4 border-yellow-600 flex items-center justify-center text-3xl font-black text-yellow-900 mb-3 shadow-[0_0_20px_rgba(250,204,21,0.5)]">
+                        {generalRank[0].name.substring(0, 2)}
+                      </div>
+                      <div className="bg-yellow-600 w-full h-40 rounded-t-xl flex flex-col items-center justify-start pt-6 border-t-4 border-yellow-400 shadow-xl">
+                        <div className="font-black text-white text-2xl">{generalRank[0].name}</div>
+                        <div className="text-yellow-200 font-bold font-mono">Puan: {generalRank[0].score.toFixed(2)}</div>
+                        <div className="mt-2 px-3 py-1 bg-yellow-800/30 rounded-full text-xs text-yellow-100 font-bold">
+                          👑 GOAT
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 3. Sıra */}
+                  {generalRank[2] && (
+                    <div className="order-3 flex flex-col items-center w-full sm:w-1/3">
+                      <div className="mb-2 text-yellow-700 font-bold text-lg">#3</div>
+                      <div className="w-20 h-20 rounded-full bg-orange-300 border-4 border-orange-500 flex items-center justify-center text-2xl font-black text-orange-800 mb-3 shadow-lg">
+                        {generalRank[2].name.substring(0, 2)}
+                      </div>
+                      <div className="bg-orange-800 w-full h-24 rounded-t-xl flex flex-col items-center justify-start pt-4 border-t-4 border-orange-600">
+                        <div className="font-bold text-white text-xl">{generalRank[2].name}</div>
+                        <div className="text-orange-200 text-sm font-mono">Puan: {generalRank[2].score.toFixed(2)}</div>
+                      </div>
+                    </div>
+                  )}
+               </div>
+
+               {/* Diğer Sıralamalar Listesi */}
+               <div className="space-y-2 mt-4 border-t border-gray-700 pt-4">
+                 {generalRank.slice(3).map((rank, idx) => (
+                   <div key={rank.name} className="flex items-center bg-gray-700/50 rounded-lg p-3 hover:bg-gray-700 transition-colors">
+                      <span className="text-gray-400 font-bold w-8">#{idx + 4}</span>
+                      <span className="text-white font-medium flex-1">{rank.name}</span>
+                      <span className="text-gray-400 font-mono text-sm">{rank.score.toFixed(2)}</span>
+                   </div>
+                 ))}
+               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 1. Bölüm: Kategori Bazlı Sıralamalar */}
         <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
           <BarChart3 className="w-6 h-6" />
-          Genel Sıralamalar (Ortalamalar)
+          Kategori Bazlı Sıralamalar
         </h2>
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
@@ -254,7 +322,7 @@ export default function ResultsPage() {
         {/* 2. Bölüm: Detaylı Analiz (Kim ne demiş?) */}
         <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
           <Eye className="w-6 h-6" />
-          Kim Kime Ne Demiş? (Dedikodu Kazanı)
+          Kim Kime Ne Demiş?
         </h2>
 
         <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
@@ -294,7 +362,6 @@ export default function ResultsPage() {
                 {rawData.map((row, idx) => {
                   // @ts-ignore
                   const userRanks = row[`${selectedDetailCategory}_rank`] as string[];
-                  
                   if (!userRanks || userRanks.length === 0) return null;
 
                   return (
