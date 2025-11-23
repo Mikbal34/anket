@@ -19,7 +19,7 @@ interface RankResult {
   score: number; // Düşük skor daha iyi
 }
 
-const NAMES = ['Babbolat', 'Egemit', 'LD', 'Berk', 'Cabibi', 'Tacizbal'];
+const NAMES = ['Egemit', 'LD', 'Berk', 'Cabibi', 'Tacizbal'];
 const CATEGORIES = [
   { key: 'wealth', label: '🤑 Maddiyat' },
   { key: 'difficulty', label: '📚 Zorluk' },

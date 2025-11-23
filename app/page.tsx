@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabaseClient';
 import RankingQuestion from '@/components/RankingQuestion';
 import { Send, Loader2, CheckCircle, User } from 'lucide-react';
 
-const NAMES = ['Babbolat', 'Egemit', 'LD', 'Berk', 'Cabibi', 'Tacizbal'];
+const NAMES = ['Egemit', 'LD', 'Berk', 'Cabibi', 'Tacizbal'];
 
 interface SurveyData {
   wealth: string[];
