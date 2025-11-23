@@ -46,7 +46,9 @@ export default function ResultsPage() {
   const [rawData, setRawData] = useState<ResponseRow[]>([]);
   const [results, setResults] = useState<{ [key: string]: RankResult[] }>({});
   
-  const [isLocked, setIsLocked] = useState(true);
+  // Ayrı Kilit Durumları
+  const [isGeneralLocked, setIsGeneralLocked] = useState(true);
+  const [isOCLocked, setIsOCLocked] = useState(true);
   
   // Eksik Listeleri
   const [missingGeneral, setMissingGeneral] = useState<string[]>([]);
@@ -70,15 +72,14 @@ export default function ResultsPage() {
         setRawData(responses);
 
         // KİMLER HANGİ ANKETİ DOLDURMAMIŞ?
-        // Bir kişinin birden fazla satırı olabilir (farklı zamanlarda farklı anketleri doldurmuş olabilir)
-        // Bu yüzden önce her kişi için tüm kayıtları birleştirelim veya kontrol edelim.
-        
         const votersGeneral = new Set<string>();
         const votersOC = new Set<string>();
 
         responses.forEach(r => {
-          if (r.voter_name && r.wealth_rank) votersGeneral.add(r.voter_name);
-          if (r.voter_name && r.gaddar_rank) votersOC.add(r.voter_name);
+          // Genel Anket Kontrolü (wealth varsa doldurmuştur kabul ediyoruz)
+          if (r.voter_name && r.wealth_rank && r.wealth_rank.length > 0) votersGeneral.add(r.voter_name);
+          // O.Ç. Anketi Kontrolü (gaddar varsa doldurmuştur)
+          if (r.voter_name && r.gaddar_rank && r.gaddar_rank.length > 0) votersOC.add(r.voter_name);
         });
 
         const missingG = NAMES.filter(name => !votersGeneral.has(name));
@@ -87,14 +88,13 @@ export default function ResultsPage() {
         setMissingGeneral(missingG);
         setMissingOC(missingO);
 
-        // Eğer HERHANGİ BİRİ eksikse kilitli kalır
-        if (missingG.length > 0 || missingO.length > 0) {
-          setIsLocked(true);
-        } else {
-          setIsLocked(false);
-          const calculated = calculateResults(responses);
-          setResults(calculated);
-        }
+        // KİLİT MANTIĞI: Her biri kendi içinde bağımsız
+        setIsGeneralLocked(missingG.length > 0);
+        setIsOCLocked(missingO.length > 0);
+
+        // Hesaplamaları her zaman yapalım, gösterip göstermemek UI'da belli olur
+        const calculated = calculateResults(responses);
+        setResults(calculated);
       }
     } catch (err) {
       console.error('Error fetching results:', err);
@@ -108,16 +108,11 @@ export default function ResultsPage() {
     
     // Puan Tutucular
     const generalScores: { [name: string]: number } = {};
-    const generalCounts: { [name: string]: number } = {}; // Kaç kişi oy vermiş (ortalama için)
-
     const ocScores: { [name: string]: number } = {};
-    const ocCounts: { [name: string]: number } = {};
     
     NAMES.forEach((name) => {
       generalScores[name] = 0;
-      generalCounts[name] = 0; // unused but kept for structure
       ocScores[name] = 0;
-      ocCounts[name] = 0;
     });
 
     // 1. GENEL KATEGORİLERİ HESAPLA
@@ -180,11 +175,7 @@ export default function ResultsPage() {
         .sort((a, b) => a.score - b.score);
     });
 
-    // GENEL PUAN HESAPLAMALARI (TOPLAM OY SAYISINA GÖRE ORTALAMA)
-    // Not: Burada basitlik için "herkes oy verdi" varsayımıyla (voteCount=NAMES.length) bölüyoruz.
-    // Kilit sistemi sayesinde zaten herkes oy vermeden burası çalışmaz.
-
-    // 3. GENEL SIRALAMA (SADECE İLK 5 SORU)
+    // 3. GENEL SIRALAMA
     finalResults['GENERAL'] = Object.entries(generalScores)
       .map(([name, totalScore]) => ({
         name,
@@ -192,7 +183,7 @@ export default function ResultsPage() {
       }))
       .sort((a, b) => a.score - b.score);
 
-    // 4. O.Ç. ŞAMPİYONU (SADECE SON 3 SORU)
+    // 4. O.Ç. ŞAMPİYONU
     finalResults['OC_CHAMPION'] = Object.entries(ocScores)
       .map(([name, totalScore]) => ({
         name,
@@ -204,115 +195,101 @@ export default function ResultsPage() {
   };
 
   // Render Helper: Podyum Bileşeni
-  const Podium = ({ title, data, colorClass, icon }: any) => (
-    <div className={`bg-gradient-to-b ${colorClass} rounded-2xl p-1 shadow-2xl max-w-4xl mx-auto overflow-hidden mb-12`}>
-      <div className="bg-gray-900/90 backdrop-blur p-6 sm:p-8 rounded-xl">
-          <h3 className="text-2xl font-black text-center text-white mb-8 flex items-center justify-center gap-3">
-            {icon} {title} {icon}
-          </h3>
-          
-          <div className="flex flex-col sm:flex-row items-end justify-center gap-4 mb-8 h-auto sm:h-64 pb-4">
-            {/* 2. Sıra */}
-            {data[1] && (
-              <div className="order-2 sm:order-1 flex flex-col items-center w-full sm:w-1/3">
-                <div className="mb-2 text-gray-400 font-bold text-lg">#2</div>
-                <div className="w-20 h-20 rounded-full bg-gray-300 border-4 border-gray-500 flex items-center justify-center text-2xl font-black text-gray-700 mb-3 shadow-lg">
-                  {data[1].name.substring(0, 2)}
-                </div>
-                <div className="bg-gray-700 w-full h-32 rounded-t-xl flex flex-col items-center justify-start pt-4 border-t-4 border-gray-400">
-                  <div className="font-bold text-white text-xl">{data[1].name}</div>
-                  <div className="text-gray-400 text-sm font-mono">{data[1].score.toFixed(2)}</div>
-                </div>
-              </div>
-            )}
+  const Podium = ({ title, data, colorClass, icon, isLocked, missingList }: any) => {
+    if (isLocked) {
+        return (
+            <div className={`bg-gray-800 rounded-2xl p-8 shadow-xl max-w-4xl mx-auto mb-12 text-center border-2 border-dashed border-gray-700 relative overflow-hidden`}>
+                 <div className="absolute inset-0 bg-black/50 z-0" />
+                 <div className="relative z-10">
+                    <Lock className="w-16 h-16 text-gray-500 mx-auto mb-4" />
+                    <h3 className="text-2xl font-black text-gray-400 mb-2">{title} KİLİTLİ</h3>
+                    <p className="text-gray-500 mb-6">Sonuçları görmek için şu arkadaşların anketi tamamlaması lazım:</p>
+                    <div className="flex flex-wrap justify-center gap-2 mb-4">
+                        {missingList.map((name: string) => (
+                        <span key={name} className="bg-gray-700 text-gray-300 px-3 py-1 rounded-lg text-sm font-bold animate-pulse">
+                            {name}
+                        </span>
+                        ))}
+                    </div>
+                 </div>
+            </div>
+        );
+    }
 
-            {/* 1. Sıra */}
-            {data[0] && (
-              <div className="order-1 sm:order-2 flex flex-col items-center w-full sm:w-1/3 -mt-8 z-10">
-                <Crown className="w-12 h-12 text-yellow-400 fill-yellow-400 mb-2 animate-bounce" />
-                <div className="w-24 h-24 rounded-full bg-yellow-400 border-4 border-yellow-600 flex items-center justify-center text-3xl font-black text-yellow-900 mb-3 shadow-[0_0_20px_rgba(250,204,21,0.5)]">
-                  {data[0].name.substring(0, 2)}
+    return (
+        <div className={`bg-gradient-to-b ${colorClass} rounded-2xl p-1 shadow-2xl max-w-4xl mx-auto overflow-hidden mb-12`}>
+        <div className="bg-gray-900/90 backdrop-blur p-6 sm:p-8 rounded-xl">
+            <h3 className="text-2xl font-black text-center text-white mb-8 flex items-center justify-center gap-3">
+                {icon} {title} {icon}
+            </h3>
+            
+            <div className="flex flex-col sm:flex-row items-end justify-center gap-4 mb-8 h-auto sm:h-64 pb-4">
+                {/* 2. Sıra */}
+                {data[1] && (
+                <div className="order-2 sm:order-1 flex flex-col items-center w-full sm:w-1/3">
+                    <div className="mb-2 text-gray-400 font-bold text-lg">#2</div>
+                    <div className="w-20 h-20 rounded-full bg-gray-300 border-4 border-gray-500 flex items-center justify-center text-2xl font-black text-gray-700 mb-3 shadow-lg">
+                    {data[1].name.substring(0, 2)}
+                    </div>
+                    <div className="bg-gray-700 w-full h-32 rounded-t-xl flex flex-col items-center justify-start pt-4 border-t-4 border-gray-400">
+                    <div className="font-bold text-white text-xl">{data[1].name}</div>
+                    <div className="text-gray-400 text-sm font-mono">{data[1].score.toFixed(2)}</div>
+                    </div>
                 </div>
-                <div className="bg-yellow-600 w-full h-40 rounded-t-xl flex flex-col items-center justify-start pt-6 border-t-4 border-yellow-400 shadow-xl">
-                  <div className="font-black text-white text-2xl">{data[0].name}</div>
-                  <div className="text-yellow-200 font-bold font-mono">{data[0].score.toFixed(2)}</div>
-                </div>
-              </div>
-            )}
+                )}
 
-            {/* 3. Sıra */}
-            {data[2] && (
-              <div className="order-3 flex flex-col items-center w-full sm:w-1/3">
-                <div className="mb-2 text-yellow-700 font-bold text-lg">#3</div>
-                <div className="w-20 h-20 rounded-full bg-orange-300 border-4 border-orange-500 flex items-center justify-center text-2xl font-black text-orange-800 mb-3 shadow-lg">
-                  {data[2].name.substring(0, 2)}
+                {/* 1. Sıra */}
+                {data[0] && (
+                <div className="order-1 sm:order-2 flex flex-col items-center w-full sm:w-1/3 -mt-8 z-10">
+                    <Crown className="w-12 h-12 text-yellow-400 fill-yellow-400 mb-2 animate-bounce" />
+                    <div className="w-24 h-24 rounded-full bg-yellow-400 border-4 border-yellow-600 flex items-center justify-center text-3xl font-black text-yellow-900 mb-3 shadow-[0_0_20px_rgba(250,204,21,0.5)]">
+                    {data[0].name.substring(0, 2)}
+                    </div>
+                    <div className="bg-yellow-600 w-full h-40 rounded-t-xl flex flex-col items-center justify-start pt-6 border-t-4 border-yellow-400 shadow-xl">
+                    <div className="font-black text-white text-2xl">{data[0].name}</div>
+                    <div className="text-yellow-200 font-bold font-mono">{data[0].score.toFixed(2)}</div>
+                    </div>
                 </div>
-                <div className="bg-orange-800 w-full h-24 rounded-t-xl flex flex-col items-center justify-start pt-4 border-t-4 border-orange-600">
-                  <div className="font-bold text-white text-xl">{data[2].name}</div>
-                  <div className="text-orange-200 text-sm font-mono">{data[2].score.toFixed(2)}</div>
+                )}
+
+                {/* 3. Sıra */}
+                {data[2] && (
+                <div className="order-3 flex flex-col items-center w-full sm:w-1/3">
+                    <div className="mb-2 text-yellow-700 font-bold text-lg">#3</div>
+                    <div className="w-20 h-20 rounded-full bg-orange-300 border-4 border-orange-500 flex items-center justify-center text-2xl font-black text-orange-800 mb-3 shadow-lg">
+                    {data[2].name.substring(0, 2)}
+                    </div>
+                    <div className="bg-orange-800 w-full h-24 rounded-t-xl flex flex-col items-center justify-start pt-4 border-t-4 border-orange-600">
+                    <div className="font-bold text-white text-xl">{data[2].name}</div>
+                    <div className="text-orange-200 text-sm font-mono">{data[2].score.toFixed(2)}</div>
+                    </div>
                 </div>
-              </div>
-            )}
-          </div>
-      </div>
-    </div>
-  );
+                )}
+            </div>
+        </div>
+        </div>
+    );
+  };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-10 h-10 animate-spin text-gray-400" /></div>;
-
-  // KİLİT EKRANI
-  if (isLocked) {
-    return (
-      <main className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-gray-800 rounded-2xl shadow-2xl p-8 text-center border border-gray-700">
-          <Lock className="w-20 h-20 text-yellow-500 mx-auto mb-6 animate-pulse" />
-          <h1 className="text-3xl font-black text-white mb-4">Oylama Sürüyor</h1>
-          <p className="text-gray-400 mb-6">Sonuçları görmek için herkesin her iki anketi de tamamlaması lazım.</p>
-          
-          {missingGeneral.length > 0 && (
-            <div className="bg-blue-900/30 border border-blue-800 p-4 rounded-xl text-left mb-4">
-               <div className="text-blue-300 text-xs font-bold mb-2 flex items-center gap-2">
-                 <BarChart3 className="w-3 h-3" /> GENEL ANKET EKSİKLERİ:
-               </div>
-               <div className="flex flex-wrap gap-2">
-                 {missingGeneral.map(name => (
-                   <span key={name} className="bg-blue-500/20 text-blue-300 px-2 py-1 rounded text-sm font-bold">{name}</span>
-                 ))}
-               </div>
-            </div>
-          )}
-
-          {missingOC.length > 0 && (
-            <div className="bg-red-900/30 border border-red-800 p-4 rounded-xl text-left mb-6">
-               <div className="text-red-400 text-xs font-bold mb-2 flex items-center gap-2">
-                 <Skull className="w-3 h-3" /> O.Ç. TESTİ EKSİKLERİ:
-               </div>
-               <div className="flex flex-wrap gap-2">
-                 {missingOC.map(name => (
-                   <span key={name} className="bg-red-500/20 text-red-400 px-2 py-1 rounded text-sm font-bold">{name}</span>
-                 ))}
-               </div>
-            </div>
-          )}
-
-          <button onClick={() => window.location.reload()} className="text-gray-500 hover:text-white transition-colors text-sm flex items-center justify-center gap-2 w-full">
-            <Clock className="w-4 h-4" /> Durumu Yenile
-          </button>
-        </div>
-      </main>
-    );
-  }
 
   const generalRank = results['GENERAL'] || [];
   const ocRank = results['OC_CHAMPION'] || [];
   const ALL_CATEGORIES = [...GENERAL_CATEGORIES, ...OC_CATEGORIES];
 
+  // Hangi kategorinin sonuçlarını gösterebiliriz?
+  const canShowDetail = (catKey: string) => {
+    const isGeneral = GENERAL_CATEGORIES.some(c => c.key === catKey);
+    if (isGeneral) return !isGeneralLocked;
+    return !isOCLocked;
+  };
+
   return (
     <main className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-16">
-          <h1 className="text-5xl font-black text-gray-900 mb-4">BÜYÜK FİNAL</h1>
-          <p className="text-xl text-gray-600">Tüm oylar kullanıldı. Maskeler düşüyor.</p>
+          <h1 className="text-5xl font-black text-gray-900 mb-4">SONUÇLAR</h1>
+          <p className="text-xl text-gray-600">Tamamlanan anketlerin sonuçları aşağıdadır.</p>
         </div>
 
         {/* GENEL KLASMAN LİDERİ */}
@@ -321,6 +298,8 @@ export default function ResultsPage() {
           data={generalRank} 
           colorClass="from-blue-900 to-gray-900" 
           icon={<Trophy className="w-8 h-8 text-yellow-400" />} 
+          isLocked={isGeneralLocked}
+          missingList={missingGeneral}
         />
 
         {/* O.Ç. ŞAMPİYONU */}
@@ -329,6 +308,8 @@ export default function ResultsPage() {
           data={ocRank} 
           colorClass="from-red-900 to-gray-900" 
           icon={<Skull className="w-8 h-8 text-red-500" />} 
+          isLocked={isOCLocked}
+          missingList={missingOC}
         />
 
         {/* TÜM DETAYLAR */}
@@ -344,42 +325,51 @@ export default function ResultsPage() {
                 }`}
               >
                 {cat.label}
+                {/* Kilit ikonu ekle eğer kilitliyse */}
+                {!canShowDetail(cat.key) && <Lock className="w-3 h-3 inline-block ml-2 text-gray-400" />}
               </button>
             ))}
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-xs text-gray-500 uppercase bg-gray-100 border-b">
-                <tr>
-                  <th className="px-6 py-3">Oy Veren</th>
-                  <th className="px-6 py-3 text-center">1.</th>
-                  <th className="px-6 py-3 text-center">2.</th>
-                  <th className="px-6 py-3 text-center">3.</th>
-                  <th className="px-6 py-3 text-center">4.</th>
-                  <th className="px-6 py-3 text-center">5.</th>
-                  <th className="px-6 py-3 text-center">6.</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rawData.map((row, idx) => {
-                  // @ts-ignore
-                  const userRanks = row[`${selectedDetailCategory}_rank`] as string[];
-                  // Eğer o kategoride veri yoksa (anket doldurulmadıysa) satırı gösterme veya tire koy
-                  if (!userRanks) return null;
-
-                  return (
-                    <tr key={idx} className="border-b hover:bg-gray-50">
-                      <td className="px-6 py-4 font-bold">{row.voter_name}</td>
-                      {userRanks.map((r, i) => (
-                        <td key={i} className={`px-6 py-4 text-center ${i===0 ? 'font-black text-black' : 'text-gray-600'}`}>
-                          {r}
-                        </td>
-                      ))}
+          
+          <div className="overflow-x-auto min-h-[200px]">
+            {canShowDetail(selectedDetailCategory) ? (
+                <table className="w-full text-sm text-left">
+                <thead className="text-xs text-gray-500 uppercase bg-gray-100 border-b">
+                    <tr>
+                    <th className="px-6 py-3">Oy Veren</th>
+                    <th className="px-6 py-3 text-center">1.</th>
+                    <th className="px-6 py-3 text-center">2.</th>
+                    <th className="px-6 py-3 text-center">3.</th>
+                    <th className="px-6 py-3 text-center">4.</th>
+                    <th className="px-6 py-3 text-center">5.</th>
+                    <th className="px-6 py-3 text-center">6.</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                    {rawData.map((row, idx) => {
+                    // @ts-ignore
+                    const userRanks = row[`${selectedDetailCategory}_rank`] as string[];
+                    if (!userRanks) return null;
+                    return (
+                        <tr key={idx} className="border-b hover:bg-gray-50">
+                        <td className="px-6 py-4 font-bold">{row.voter_name}</td>
+                        {userRanks.map((r, i) => (
+                            <td key={i} className={`px-6 py-4 text-center ${i===0 ? 'font-black text-black' : 'text-gray-600'}`}>
+                            {r}
+                            </td>
+                        ))}
+                        </tr>
+                    );
+                    })}
+                </tbody>
+                </table>
+            ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                    <Lock className="w-12 h-12 mb-4 text-gray-300" />
+                    <p className="font-medium">Bu kategorinin sonuçları henüz kilitli.</p>
+                    <p className="text-sm">İlgili anketi herkes tamamlayınca açılacak.</p>
+                </div>
+            )}
           </div>
         </div>
 
