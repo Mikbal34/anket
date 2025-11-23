@@ -2,21 +2,21 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Trophy, BarChart3, Loader2, Eye, Lock, Clock, AlertCircle, Crown, Skull, Flame } from 'lucide-react';
+import { Trophy, BarChart3, Loader2, Eye, Lock, Clock, AlertCircle, Crown, Skull } from 'lucide-react';
 
 // Tipler
 interface ResponseRow {
   voter_name?: string;
-  // Bölüm 1
-  wealth_rank: string[];
-  difficulty_rank: string[];
-  relationships_rank: string[];
-  social_rank: string[];
-  housing_rank: string[];
-  // Bölüm 2
-  gaddar_rank: string[];
-  frequency_rank: string[];
-  quality_rank: string[];
+  // Bölüm 1 (Optional)
+  wealth_rank: string[] | null;
+  difficulty_rank: string[] | null;
+  relationships_rank: string[] | null;
+  social_rank: string[] | null;
+  housing_rank: string[] | null;
+  // Bölüm 2 (Optional)
+  gaddar_rank: string[] | null;
+  frequency_rank: string[] | null;
+  quality_rank: string[] | null;
 }
 
 interface RankResult {
@@ -47,8 +47,10 @@ export default function ResultsPage() {
   const [results, setResults] = useState<{ [key: string]: RankResult[] }>({});
   
   const [isLocked, setIsLocked] = useState(true);
-  const [missingVoters, setMissingVoters] = useState<string[]>([]);
-  const [votersList, setVotersList] = useState<string[]>([]);
+  
+  // Eksik Listeleri
+  const [missingGeneral, setMissingGeneral] = useState<string[]>([]);
+  const [missingOC, setMissingOC] = useState<string[]>([]);
 
   const [selectedDetailCategory, setSelectedDetailCategory] = useState<string>('wealth');
 
@@ -65,14 +67,28 @@ export default function ResultsPage() {
 
       if (data) {
         const responses = data as ResponseRow[];
-        const voters = Array.from(new Set(responses.map(r => r.voter_name).filter(Boolean))) as string[];
-        const missing = NAMES.filter(name => !voters.includes(name));
-        
-        setVotersList(voters);
-        setMissingVoters(missing);
         setRawData(responses);
 
-        if (missing.length > 0) {
+        // KİMLER HANGİ ANKETİ DOLDURMAMIŞ?
+        // Bir kişinin birden fazla satırı olabilir (farklı zamanlarda farklı anketleri doldurmuş olabilir)
+        // Bu yüzden önce her kişi için tüm kayıtları birleştirelim veya kontrol edelim.
+        
+        const votersGeneral = new Set<string>();
+        const votersOC = new Set<string>();
+
+        responses.forEach(r => {
+          if (r.voter_name && r.wealth_rank) votersGeneral.add(r.voter_name);
+          if (r.voter_name && r.gaddar_rank) votersOC.add(r.voter_name);
+        });
+
+        const missingG = NAMES.filter(name => !votersGeneral.has(name));
+        const missingO = NAMES.filter(name => !votersOC.has(name));
+        
+        setMissingGeneral(missingG);
+        setMissingOC(missingO);
+
+        // Eğer HERHANGİ BİRİ eksikse kilitli kalır
+        if (missingG.length > 0 || missingO.length > 0) {
           setIsLocked(true);
         } else {
           setIsLocked(false);
@@ -92,26 +108,32 @@ export default function ResultsPage() {
     
     // Puan Tutucular
     const generalScores: { [name: string]: number } = {};
+    const generalCounts: { [name: string]: number } = {}; // Kaç kişi oy vermiş (ortalama için)
+
     const ocScores: { [name: string]: number } = {};
+    const ocCounts: { [name: string]: number } = {};
     
     NAMES.forEach((name) => {
       generalScores[name] = 0;
+      generalCounts[name] = 0; // unused but kept for structure
       ocScores[name] = 0;
+      ocCounts[name] = 0;
     });
 
     // 1. GENEL KATEGORİLERİ HESAPLA
     GENERAL_CATEGORIES.forEach((cat) => {
       const scores: { [name: string]: number } = {};
+      let voteCount = 0;
       NAMES.forEach((name) => (scores[name] = 0));
 
       data.forEach((row) => {
         // @ts-ignore
         const rankList = row[`${cat.key}_rank`] as string[];
-        if (Array.isArray(rankList)) {
+        if (Array.isArray(rankList) && rankList.length > 0) {
+          voteCount++;
           rankList.forEach((name, index) => {
             if (scores[name] !== undefined) {
               let points = index + 1;
-              // Zorluk ters puanlama
               if (cat.key === 'difficulty') {
                  points = (NAMES.length + 1) - (index + 1);
               }
@@ -125,7 +147,7 @@ export default function ResultsPage() {
       finalResults[cat.key] = Object.entries(scores)
         .map(([name, totalScore]) => ({
           name,
-          score: data.length > 0 ? totalScore / data.length : 0,
+          score: voteCount > 0 ? totalScore / voteCount : 0,
         }))
         .sort((a, b) => a.score - b.score);
     });
@@ -133,15 +155,16 @@ export default function ResultsPage() {
     // 2. O.Ç. KATEGORİLERİNİ HESAPLA
     OC_CATEGORIES.forEach((cat) => {
       const scores: { [name: string]: number } = {};
+      let voteCount = 0;
       NAMES.forEach((name) => (scores[name] = 0));
 
       data.forEach((row) => {
         // @ts-ignore
         const rankList = row[`${cat.key}_rank`] as string[];
-        if (Array.isArray(rankList)) {
+        if (Array.isArray(rankList) && rankList.length > 0) {
+          voteCount++;
           rankList.forEach((name, index) => {
             if (scores[name] !== undefined) {
-              // Burada 1. sıra = En çok OÇ = 1 puan (Zirveye oynamak için düşük puan iyi)
               scores[name] += index + 1;
               ocScores[name] += index + 1;
             }
@@ -152,16 +175,20 @@ export default function ResultsPage() {
       finalResults[cat.key] = Object.entries(scores)
         .map(([name, totalScore]) => ({
           name,
-          score: data.length > 0 ? totalScore / data.length : 0,
+          score: voteCount > 0 ? totalScore / voteCount : 0,
         }))
         .sort((a, b) => a.score - b.score);
     });
+
+    // GENEL PUAN HESAPLAMALARI (TOPLAM OY SAYISINA GÖRE ORTALAMA)
+    // Not: Burada basitlik için "herkes oy verdi" varsayımıyla (voteCount=NAMES.length) bölüyoruz.
+    // Kilit sistemi sayesinde zaten herkes oy vermeden burası çalışmaz.
 
     // 3. GENEL SIRALAMA (SADECE İLK 5 SORU)
     finalResults['GENERAL'] = Object.entries(generalScores)
       .map(([name, totalScore]) => ({
         name,
-        score: data.length > 0 ? (totalScore / (data.length * GENERAL_CATEGORIES.length)) : 0,
+        score: totalScore / (NAMES.length * GENERAL_CATEGORIES.length),
       }))
       .sort((a, b) => a.score - b.score);
 
@@ -169,9 +196,9 @@ export default function ResultsPage() {
     finalResults['OC_CHAMPION'] = Object.entries(ocScores)
       .map(([name, totalScore]) => ({
         name,
-        score: data.length > 0 ? (totalScore / (data.length * OC_CATEGORIES.length)) : 0,
+        score: totalScore / (NAMES.length * OC_CATEGORIES.length),
       }))
-      .sort((a, b) => a.score - b.score); // Düşük puan = Daha çok OÇ
+      .sort((a, b) => a.score - b.score);
 
     return finalResults;
   };
@@ -184,7 +211,6 @@ export default function ResultsPage() {
             {icon} {title} {icon}
           </h3>
           
-          {/* Podyum */}
           <div className="flex flex-col sm:flex-row items-end justify-center gap-4 mb-8 h-auto sm:h-64 pb-4">
             {/* 2. Sıra */}
             {data[1] && (
@@ -234,19 +260,44 @@ export default function ResultsPage() {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-10 h-10 animate-spin text-gray-400" /></div>;
 
+  // KİLİT EKRANI
   if (isLocked) {
     return (
       <main className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-gray-800 rounded-2xl shadow-2xl p-8 text-center border border-gray-700">
-          <Lock className="w-20 h-20 text-yellow-500 mx-auto mb-6" />
+          <Lock className="w-20 h-20 text-yellow-500 mx-auto mb-6 animate-pulse" />
           <h1 className="text-3xl font-black text-white mb-4">Oylama Sürüyor</h1>
-          <div className="bg-gray-900 p-4 rounded-xl text-left mb-6">
-             <div className="text-gray-400 text-xs font-bold mb-2">BEKLENENLER:</div>
-             <div className="flex flex-wrap gap-2">
-               {missingVoters.map(name => <span key={name} className="bg-red-500/20 text-red-400 px-2 py-1 rounded text-sm">{name}</span>)}
-             </div>
-          </div>
-          <button onClick={() => window.location.reload()} className="text-blue-400 hover:underline">Yenile</button>
+          <p className="text-gray-400 mb-6">Sonuçları görmek için herkesin her iki anketi de tamamlaması lazım.</p>
+          
+          {missingGeneral.length > 0 && (
+            <div className="bg-blue-900/30 border border-blue-800 p-4 rounded-xl text-left mb-4">
+               <div className="text-blue-300 text-xs font-bold mb-2 flex items-center gap-2">
+                 <BarChart3 className="w-3 h-3" /> GENEL ANKET EKSİKLERİ:
+               </div>
+               <div className="flex flex-wrap gap-2">
+                 {missingGeneral.map(name => (
+                   <span key={name} className="bg-blue-500/20 text-blue-300 px-2 py-1 rounded text-sm font-bold">{name}</span>
+                 ))}
+               </div>
+            </div>
+          )}
+
+          {missingOC.length > 0 && (
+            <div className="bg-red-900/30 border border-red-800 p-4 rounded-xl text-left mb-6">
+               <div className="text-red-400 text-xs font-bold mb-2 flex items-center gap-2">
+                 <Skull className="w-3 h-3" /> O.Ç. TESTİ EKSİKLERİ:
+               </div>
+               <div className="flex flex-wrap gap-2">
+                 {missingOC.map(name => (
+                   <span key={name} className="bg-red-500/20 text-red-400 px-2 py-1 rounded text-sm font-bold">{name}</span>
+                 ))}
+               </div>
+            </div>
+          )}
+
+          <button onClick={() => window.location.reload()} className="text-gray-500 hover:text-white transition-colors text-sm flex items-center justify-center gap-2 w-full">
+            <Clock className="w-4 h-4" /> Durumu Yenile
+          </button>
         </div>
       </main>
     );
@@ -313,7 +364,9 @@ export default function ResultsPage() {
                 {rawData.map((row, idx) => {
                   // @ts-ignore
                   const userRanks = row[`${selectedDetailCategory}_rank`] as string[];
+                  // Eğer o kategoride veri yoksa (anket doldurulmadıysa) satırı gösterme veya tire koy
                   if (!userRanks) return null;
+
                   return (
                     <tr key={idx} className="border-b hover:bg-gray-50">
                       <td className="px-6 py-4 font-bold">{row.voter_name}</td>

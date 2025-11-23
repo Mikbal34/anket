@@ -1,4 +1,4 @@
--- ÖNCEKİ TABLOYU SİL (Yedek almadıysan veriler gider!)
+-- TABLOYU SIFIRLA (Veriler gider!)
 drop table if exists public.survey_responses;
 
 create table public.survey_responses (
@@ -7,20 +7,20 @@ create table public.survey_responses (
   
   voter_name text not null,
   
-  -- BÖLÜM 1: GENEL ANKET
-  wealth_rank jsonb not null,       -- Maddiyat
-  difficulty_rank jsonb not null,   -- Zorluk
-  relationships_rank jsonb not null,-- İlişki
-  social_rank jsonb not null,       -- Sosyallik
-  housing_rank jsonb not null,      -- Barınma
+  -- BÖLÜM 1: GENEL ANKET (Boş bırakılabilir)
+  wealth_rank jsonb,
+  difficulty_rank jsonb,
+  relationships_rank jsonb,
+  social_rank jsonb,
+  housing_rank jsonb,
 
-  -- BÖLÜM 2: O.Ç. TESTİ (YENİ)
-  gaddar_rank jsonb not null,       -- En Gaddar
-  frequency_rank jsonb not null,    -- En Sık Yapan
-  quality_rank jsonb not null       -- En Kaliteli Yapan
+  -- BÖLÜM 2: O.Ç. TESTİ (Boş bırakılabilir)
+  gaddar_rank jsonb,
+  frequency_rank jsonb,
+  quality_rank jsonb
 );
 
--- Güvenlik Politikaları
+-- Güvenlik
 alter table public.survey_responses enable row level security;
 
 create policy "Herkes anket gönderebilir"
