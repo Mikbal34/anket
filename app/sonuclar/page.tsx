@@ -90,8 +90,19 @@ export default function ResultsPage() {
         if (Array.isArray(rankList)) {
           rankList.forEach((name, index) => {
             if (scores[name] !== undefined) {
-              scores[name] += index + 1;
-              generalScores[name] += index + 1;
+              // Puan Hesaplama: Normalde 1. sıra = 1 Puan
+              let points = index + 1;
+
+              // ZORLUK İÇİN TERS HESAPLAMA:
+              // 1. sıradaki (En zor) = En yüksek puanı almalı (Kötü etkilemeli)
+              // Formül: (Kişi Sayısı + 1) - Sıralama
+              // Örnek 6 kişi için: 1. sıra -> 7-1=6 puan, 6. sıra -> 7-6=1 puan
+              if (cat.key === 'difficulty') {
+                 points = (NAMES.length + 1) - (index + 1);
+              }
+
+              scores[name] += points;
+              generalScores[name] += points;
             }
           });
         }
