@@ -3,20 +3,24 @@
 import { useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import RankingQuestion from '@/components/RankingQuestion';
-import { Send, Loader2, CheckCircle, User } from 'lucide-react';
+import { Send, Loader2, CheckCircle, User, Skull } from 'lucide-react';
 
-const NAMES = ['Egemit', 'LD', 'Berk', 'Cabibi', 'Tacizbal'];
+const NAMES = ['Babbolat', 'Egemit', 'LD', 'Berk', 'Cabibi', 'Tacizbal'];
 
 interface SurveyData {
+  // Bölüm 1
   wealth: string[];
   difficulty: string[];
   relationships: string[];
   social: string[];
   housing: string[];
+  // Bölüm 2 (O.Ç. Testi)
+  gaddar: string[];
+  frequency: string[];
+  quality: string[];
 }
 
 export default function Home() {
-  // State
   const [currentVoter, setCurrentVoter] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -28,6 +32,9 @@ export default function Home() {
     relationships: [],
     social: [],
     housing: [],
+    gaddar: [],
+    frequency: [],
+    quality: [],
   });
 
   const handleRankingChange = (category: keyof SurveyData, rankedItems: string[]) => {
@@ -40,7 +47,10 @@ export default function Home() {
       answers.difficulty.length === NAMES.length &&
       answers.relationships.length === NAMES.length &&
       answers.social.length === NAMES.length &&
-      answers.housing.length === NAMES.length
+      answers.housing.length === NAMES.length &&
+      answers.gaddar.length === NAMES.length &&
+      answers.frequency.length === NAMES.length &&
+      answers.quality.length === NAMES.length
     );
   };
 
@@ -51,17 +61,18 @@ export default function Home() {
     setError(null);
 
     try {
-      // Önce bu kişinin daha önce oy verip vermediğini kontrol edelim (İsteğe bağlı, şimdilik kapalı)
-      // const { data: existingVote } = await supabase.from('survey_responses').select('id').eq('voter_name', currentVoter).single();
-      // if (existingVote) throw new Error('Sen zaten oy kullanmışsın! Çakallık yapma :)');
-
       const { error: supabaseError } = await supabase.from('survey_responses').insert({
         voter_name: currentVoter,
+        // Bölüm 1
         wealth_rank: answers.wealth,
         difficulty_rank: answers.difficulty,
         relationships_rank: answers.relationships,
         social_rank: answers.social,
         housing_rank: answers.housing,
+        // Bölüm 2
+        gaddar_rank: answers.gaddar,
+        frequency_rank: answers.frequency,
+        quality_rank: answers.quality,
       });
 
       if (supabaseError) throw supabaseError;
@@ -76,7 +87,7 @@ export default function Home() {
     }
   };
 
-  // 1. GİRİŞ EKRANI (İsim Seçme)
+  // 1. GİRİŞ EKRANI
   if (!currentVoter) {
     return (
       <main className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
@@ -86,7 +97,7 @@ export default function Home() {
           </div>
           <h1 className="text-3xl font-black text-gray-900 mb-2">Sen Kimsin?</h1>
           <p className="text-gray-500 mb-8">
-            Ankete başlamak için ismini seç. Dürüst ol, başkasının yerine girme :)
+            Ankete başlamak için ismini seç.
           </p>
 
           <div className="grid grid-cols-1 gap-3">
@@ -121,7 +132,7 @@ export default function Home() {
           </div>
           <h1 className="text-3xl font-bold text-gray-800 mb-2">Eyvallah {currentVoter}!</h1>
           <p className="text-gray-600 mb-8">
-            Oylarını kaydettik. Bakalım grup ne düşünüyor?
+            Oylarını kaydettik. Bakalım O.Ç. şampiyonu kim olacak?
           </p>
           <div className="flex flex-col gap-3 w-full">
             <a
@@ -171,8 +182,13 @@ export default function Home() {
           </div>
         )}
 
-        {/* Questions */}
+        {/* BÖLÜM 1 */}
         <div className="space-y-6">
+          <div className="flex items-center gap-3 mb-4">
+             <span className="px-3 py-1 bg-gray-900 text-white rounded-full text-xs font-bold">BÖLÜM 1</span>
+             <h2 className="text-lg font-bold text-gray-700">Genel Durum Değerlendirmesi</h2>
+          </div>
+
           <RankingQuestion
             title="1. Maddiyata Göre Yaşam Kalitesi"
             description="Kimin yaşam standartları ve maddiyatı en iyi? En zenginden fakire doğru sırala."
@@ -206,6 +222,38 @@ export default function Home() {
             description="Kimin evi/yurdu/kaldığı yer daha iyi? En kral daireden en kötüye."
             options={NAMES}
             onChange={(val) => handleRankingChange('housing', val)}
+          />
+        </div>
+
+        {/* BÖLÜM 2: O.Ç. TESTİ */}
+        <div className="space-y-6 pt-8 border-t-2 border-dashed border-gray-300 mt-8">
+          <div className="flex items-center gap-3 mb-4">
+             <span className="px-3 py-1 bg-red-600 text-white rounded-full text-xs font-bold">BÖLÜM 2</span>
+             <h2 className="text-lg font-bold text-red-700 flex items-center gap-2">
+                <Skull className="w-5 h-5" />
+                O.Ç. Liderlik Testi
+             </h2>
+          </div>
+          
+          <RankingQuestion
+            title="1. En Gaddar Kim?"
+            description="Kim en acımasız, en vicdansız? En gaddardan pamuk kalpliye sırala."
+            options={NAMES}
+            onChange={(val) => handleRankingChange('gaddar', val)}
+          />
+
+          <RankingQuestion
+            title="2. Sıklık: Kim En Çok O.Ç'lik Yapıyor?"
+            description="Kimin ne zaman ne yapacağı belli olmaz? 7/24 yapan en üste."
+            options={NAMES}
+            onChange={(val) => handleRankingChange('frequency', val)}
+          />
+
+          <RankingQuestion
+            title="3. Kalite: Kim En Kaliteli O.Ç'lik Yapıyor?"
+            description="Az yapar ama öz yapar. Yaptı mı tam yapar dediğin kim?"
+            options={NAMES}
+            onChange={(val) => handleRankingChange('quality', val)}
           />
         </div>
 
